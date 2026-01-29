@@ -1,111 +1,153 @@
 import os
-import requests
 import hashlib
-import datetime
-from fastapi import FastAPI, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+import requests
 from typing import List
+from datetime import datetime
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+import models, schemas, database
 
-import models, schemas, crud, database
-
-# Initialize Database Tables (auto-create if not exists)
+# 1. Initialize Database Tables
 models.Base.metadata.create_all(bind=database.engine)
 
-app = FastAPI(title="Clash Royale H2H Tracker")
+app = FastAPI()
 
+# 2. CORS Configuration (Allows Frontend to talk to Backend)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows localhost:3000 and others
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 3. Helper: Clash Royale API Client
 CR_API_KEY = os.getenv("CR_API_KEY")
+API_BASE = "https://api.clashroyale.com/v1"
 
-# --- Helpers ---
-def generate_battle_id(battle_time_str: str, tag: str) -> str:
-    """Generates a deterministic ID from the battle time + player tag"""
-    raw_string = f"{battle_time_str}{tag}"
+def get_headers():
+    if not CR_API_KEY:
+        raise HTTPException(status_code=500, detail="CR_API_KEY not set in environment")
+    return {"Authorization": f"Bearer {CR_API_KEY}"}
+
+def generate_battle_id(battle_time: str, p1_tag: str, p2_tag: str) -> str:
+    """
+    Creates a unique ID for a match so we don't save duplicates.
+    Logic: MD5(Time + SortedPlayerTags)
+    """
+    # Sort tags to ensure A vs B and B vs A produce the same ID
+    tags = sorted([p1_tag, p2_tag])
+    raw_string = f"{battle_time}-{tags[0]}-{tags[1]}"
     return hashlib.md5(raw_string.encode()).hexdigest()
 
-def parse_cr_time(time_str: str) -> datetime.datetime:
-    """Parses CR API time format: YYYYMMDDTHHMMSS.000Z"""
-    # Fix formatting to be ISO compliant for Python
-    clean_time = time_str.replace("Z", "+00:00")
-    # Convert '20231115T100000.000+00:00' -> '2023-11-15T10:00:00.000+00:00'
-    # Simple strategy: reformat string to ISO before parsing
-    iso_format = f"{clean_time[:4]}-{clean_time[4:6]}-{clean_time[6:8]}T{clean_time[9:11]}:{clean_time[11:13]}:{clean_time[13:]}"
-    return datetime.datetime.fromisoformat(iso_format)
+# 4. API Endpoints
 
-# --- Endpoints ---
+@app.get("/")
+def read_root():
+    return {"status": "online", "service": "CR Tracker API"}
 
 @app.post("/users/", response_model=schemas.UserResponse)
 def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
-    db_user = crud.get_user_by_tag(db, player_tag=user.player_tag)
-    if db_user:
-        return db_user # Return existing user if already registered
-    return crud.create_user(db=db, user=user)
+    """
+    Registers a user. If they exist, returns the existing record.
+    """
+    # Check if user exists
+    existing_user = db.query(models.User).filter(models.User.player_tag == user.player_tag).first()
+    if existing_user:
+        return existing_user
+
+    new_user = models.User(username=user.username, player_tag=user.player_tag)
+    try:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="User already exists")
 
 @app.get("/players/{player_tag}/matches", response_model=List[schemas.MatchResponse])
-def read_matches(player_tag: str, db: Session = Depends(database.get_db)):
-    """Fetch history for a player (checking both P1 and P2 slots)"""
-    # Ensure tag has #
-    if not player_tag.startswith("#"):
-        player_tag = f"#{player_tag}"
-    return crud.get_matches_for_player(db, player_tag=player_tag)
+def get_player_matches(player_tag: str, db: Session = Depends(database.get_db)):
+    """
+    Fetches match history where the user is EITHER Player 1 OR Player 2.
+    """
+    matches = db.query(models.Match).filter(
+        (models.Match.player_1_tag == player_tag) | 
+        (models.Match.player_2_tag == player_tag)
+    ).order_by(models.Match.battle_time.desc()).limit(50).all()
+    
+    return matches
 
 @app.post("/sync/{player_tag}")
-def sync_player_battles(player_tag: str, db: Session = Depends(database.get_db)):
+def sync_battles(player_tag: str, db: Session = Depends(database.get_db)):
     """
-    1. Fetches official battle log from Clash Royale API.
-    2. Transforms data to our schema.
-    3. Deduplicates and saves to DB.
+    Fetches recent battles from Clash Royale API and saves them to DB.
     """
-    if not player_tag.startswith("%23") and not player_tag.startswith("#"):
-        # For API URL, # must be encoded as %23, but requests handles encoding often.
-        # However, safe bet is to pass clean tag.
-        pass
+    # 1. Clean Tag
+    clean_tag = player_tag.replace("#", "%23")
+    url = f"{API_BASE}/players/{clean_tag}/battlelog"
     
-    clean_tag = player_tag.replace("#", "")
-    url = f"https://api.clashroyale.com/v1/players/%23{clean_tag}/battlelog"
-    
-    headers = {"Authorization": f"Bearer {CR_API_KEY}"}
-    response = requests.get(url, headers=headers)
-    
-    if response.status_code != 200:
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch from CR API")
-    
-    battles = response.json()
-    matches_to_insert = []
+    # 2. Call External API
+    try:
+        response = requests.get(url, headers=get_headers())
+        if response.status_code == 403:
+            raise HTTPException(status_code=403, detail="API Key Invalid or IP blocked by Clash Royale")
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch from Clash Royale")
+        
+        battles = response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    for battle in battles:
-        # We only track PvP modes usually, but let's grab everything
-        if battle['type'] == 'PvP' or battle['type'] == 'pathOfLegend': 
-             # Generate Unique ID
-            b_time_str = battle['battleTime']
-            b_id = generate_battle_id(b_time_str, f"#{clean_tag}")
+    # 3. Process & Save Battles
+    saved_count = 0
+    for b in battles:
+        # We only support 1v1 or 2v2 (ignore challenges/tournaments for simplicity if needed)
+        if b.get("type") not in ["PvP", "2v2", "ClanWar"]:
+            continue
             
-            # Determine who is who (API response is relative to the requested player)
-            # 'team' is the requested player, 'opponent' is the enemy
-            p1_tag = battle['team'][0]['tag']
-            p2_tag = battle['opponent'][0]['tag']
+        try:
+            # Extract basic data
+            # Note: API format varies. This assumes standard PvP structure.
+            p1_tag = b["team"][0]["tag"]
+            p2_tag = b["opponent"][0]["tag"]
             
-            # Helper to calculate winner
-            p1_crowns = battle['team'][0]['crowns']
-            p2_crowns = battle['opponent'][0]['crowns']
-            
-            winner = None
-            if p1_crowns > p2_crowns:
-                winner = p1_tag
-            elif p2_crowns > p1_crowns:
-                winner = p2_tag
+            # API returns generic format 20240215T120000.000Z
+            battle_time_str = b["battleTime"]
+            # Convert to Python DateTime
+            battle_time_obj = datetime.strptime(battle_time_str, "%Y%m%dT%H%M%S.%fZ")
 
-            match_data = {
-                "battle_id": b_id,
-                "player_1_tag": p1_tag,
-                "player_2_tag": p2_tag,
-                "winner_tag": winner,
-                "battle_time": parse_cr_time(b_time_str),
-                "game_mode": battle['gameMode']['name'],
-                "crowns_1": p1_crowns,
-                "crowns_2": p2_crowns
-            }
-            matches_to_insert.append(match_data)
+            # Generate Unique Hash
+            battle_id = generate_battle_id(battle_time_str, p1_tag, p2_tag)
 
-    # Bulk Insert
-    crud.upsert_matches(db, matches_to_insert)
-    
-    return {"status": "success", "matches_synced": len(matches_to_insert)}
+            # Check if exists
+            if db.query(models.Match).filter(models.Match.battle_id == battle_id).first():
+                continue
+
+            # Create Record
+            match_record = models.Match(
+                battle_id=battle_id,
+                player_1_tag=p1_tag,
+                player_2_tag=p2_tag,
+                winner_tag=p1_tag if b["team"][0]["crowns"] > b["opponent"][0]["crowns"] else (p2_tag if b["opponent"][0]["crowns"] > b["team"][0]["crowns"] else None),
+                battle_time=battle_time_obj,
+                game_mode=b["type"],
+                crowns_1=b["team"][0]["crowns"],
+                crowns_2=b["opponent"][0]["crowns"]
+            )
+            
+            db.add(match_record)
+            saved_count += 1
+            
+        except (KeyError, IndexError):
+            # Skip malformed battles
+            continue
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        
+    return {"status": "success", "new_matches_synced": saved_count}

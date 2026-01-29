@@ -1,79 +1,125 @@
-import React, { useEffect, useState } from 'react';
-import { RefreshCcw, LogOut } from 'lucide-react';
-import { api } from '../api/clash';
-import StatCard from '../components/StatCard';
-import MatchTable from '../components/MatchTable';
+import React, { useState, useEffect, useCallback } from 'react';
+import MatchTable from '../components/MatchTable'; // Assuming this exists based on your file list
+import StatCard from '../components/StatCard';     // Assuming this exists based on your file list
 
 const Dashboard = ({ user, onLogout }) => {
   const [matches, setMatches] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Initial Fetch
-  useEffect(() => {
-    fetchHistory();
-  }, [user.player_tag]);
-
-  const fetchHistory = async () => {
-    setLoading(true);
+  // 1. Function to fetch existing matches from DB
+  const fetchMatches = useCallback(async () => {
     try {
-      const data = await api.getMatches(user.player_tag);
+      const response = await fetch(`http://localhost:8000/players/${user.player_tag.replace('#', '%23')}/matches`);
+      if (!response.ok) throw new Error('Failed to fetch history');
+      const data = await response.json();
       setMatches(data);
-    } catch (error) {
-      console.error("Failed to load history", error);
+    } catch (err) {
+      console.error(err);
+      setError('Could not load matches.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user.player_tag]);
 
+  // 2. Initial Load
+  useEffect(() => {
+    fetchMatches();
+  }, [fetchMatches]);
+
+  // 3. Sync Function (Calls the new Backend Endpoint)
   const handleSync = async () => {
     setSyncing(true);
+    setError(null);
     try {
-      await api.syncBattles(user.player_tag);
-      await fetchHistory(); // Refresh list after sync
-    } catch (error) {
-      console.error("Sync failed", error);
-      alert("Failed to sync with Supercell. Try again later.");
+      // URL Encode the tag (# -> %23)
+      const formattedTag = user.player_tag.replace('#', '%23');
+      
+      const response = await fetch(`http://localhost:8000/sync/${formattedTag}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        if (response.status === 403) throw new Error('Clash Royale API rejected the request (Check IP/Key).');
+        throw new Error('Sync failed.');
+      }
+
+      const result = await response.json();
+      alert(`Sync Complete! Added ${result.new_matches_synced} new matches.`);
+      
+      // Refresh the list immediately
+      await fetchMatches();
+      
+    } catch (err) {
+      setError(err.message);
     } finally {
       setSyncing(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white pb-20">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-10 p-4 shadow-lg">
-        <div className="max-w-md mx-auto flex justify-between items-center">
-          <div>
-            <h2 className="text-lg font-bold">{user.username}</h2>
-            <p className="text-xs text-blue-400 font-mono">{user.player_tag}</p>
-          </div>
-          <div className="flex gap-2">
-            <button 
+      <header className="bg-white shadow">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+          <h1 className="text-3xl font-bold text-gray-900">
+            {user.username}'s Dashboard <span className="text-sm text-gray-500">({user.player_tag})</span>
+          </h1>
+          <div className="flex gap-4">
+            <button
               onClick={handleSync}
               disabled={syncing}
-              className={`p-2 rounded-full bg-slate-700 hover:bg-blue-600 transition-colors ${syncing ? 'animate-spin text-blue-400' : 'text-white'}`}
+              className={`px-4 py-2 rounded-md text-white font-medium transition-colors ${
+                syncing 
+                  ? 'bg-blue-300 cursor-not-allowed' 
+                  : 'bg-blue-600 hover:bg-blue-700'
+              }`}
             >
-              <RefreshCcw className="w-5 h-5" />
+              {syncing ? 'Syncing...' : 'Sync Battles'}
             </button>
-            <button onClick={onLogout} className="p-2 rounded-full bg-slate-700 hover:bg-red-600 transition-colors">
-              <LogOut className="w-5 h-5" />
+            <button
+              onClick={onLogout}
+              className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
+            >
+              Logout
             </button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-md mx-auto p-4">
-        <StatCard matches={matches} playerTag={user.player_tag} />
-        
-        <h3 className="text-sm font-bold uppercase tracking-widest text-slate-500 mb-4">Battle Log</h3>
-        
-        {loading ? (
-          <div className="text-center py-10 text-slate-500 animate-pulse">Loading battle data...</div>
-        ) : (
-          <MatchTable matches={matches} playerTag={user.player_tag} />
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Stats Row (Optional - placeholders for now) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <StatCard title="Total Tracked" value={matches.length} />
+          <StatCard title="Recent Win Rate" value={matches.length > 0 ? "Calculating..." : "N/A"} />
+          <StatCard title="Last Updated" value={new Date().toLocaleTimeString()} />
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md border border-red-200">
+            {error}
+          </div>
         )}
+
+        {/* Match Table */}
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Matches</h3>
+          </div>
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Loading matches...</div>
+          ) : matches.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              No matches found. Click <b>"Sync Battles"</b> to fetch data from Clash Royale.
+            </div>
+          ) : (
+            // Passing the raw match data to your existing table component
+            <MatchTable matches={matches} userTag={user.player_tag} />
+          )}
+        </div>
       </main>
     </div>
   );
