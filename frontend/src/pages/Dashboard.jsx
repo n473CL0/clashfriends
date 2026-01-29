@@ -1,126 +1,90 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import MatchTable from '../components/MatchTable'; // Assuming this exists based on your file list
-import StatCard from '../components/StatCard';     // Assuming this exists based on your file list
+import { UserPlus, RefreshCw, LogOut } from 'lucide-react';
+import MatchTable from '../components/MatchTable';
+import StatCard from '../components/StatCard';
+import Leaderboard from '../components/Leaderboard';
+import FriendSearchModal from '../components/FriendSearchModal';
+import { api } from '../api/clash';
 
 const Dashboard = ({ user, onLogout }) => {
   const [matches, setMatches] = useState([]);
+  const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // 1. Function to fetch existing matches from DB
-  const fetchMatches = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:8000/players/${user.player_tag.replace('#', '%23')}/matches`);
-      if (!response.ok) throw new Error('Failed to fetch history');
-      const data = await response.json();
-      setMatches(data);
+      const [matchData, friendData] = await Promise.all([
+        api.getMatches(user.player_tag),
+        api.getFriends(user.id)
+      ]);
+      setMatches(matchData);
+      setFriends(friendData);
     } catch (err) {
-      console.error(err);
-      setError('Could not load matches.');
+      console.error("Fetch error:", err);
     } finally {
       setLoading(false);
     }
-  }, [user.player_tag]);
+  }, [user]);
 
-  // 2. Initial Load
-  useEffect(() => {
-    fetchMatches();
-  }, [fetchMatches]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  // 3. Sync Function (Calls the new Backend Endpoint)
   const handleSync = async () => {
     setSyncing(true);
-    setError(null);
     try {
-      // URL Encode the tag (# -> %23)
-      const formattedTag = user.player_tag.replace('#', '%23');
-      
-      const response = await fetch(`http://localhost:8000/sync/${formattedTag}`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        if (response.status === 403) throw new Error('Clash Royale API rejected the request (Check IP/Key).');
-        throw new Error('Sync failed.');
-      }
-
-      const result = await response.json();
-      alert(`Sync Complete! Added ${result.new_matches_synced} new matches.`);
-      
-      // Refresh the list immediately
-      await fetchMatches();
-      
-    } catch (err) {
-      setError(err.message);
+      await api.syncBattles(user.player_tag);
+      await fetchData();
     } finally {
       setSyncing(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-gray-900">
-            {user.username}'s Dashboard <span className="text-sm text-gray-500">({user.player_tag})</span>
-          </h1>
-          <div className="flex gap-4">
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className={`px-4 py-2 rounded-md text-white font-medium transition-colors ${
-                syncing 
-                  ? 'bg-blue-300 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {syncing ? 'Syncing...' : 'Sync Battles'}
+    <div className="min-h-screen bg-slate-900 text-slate-100">
+      <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
+          <h1 className="font-black text-xl tracking-tight text-blue-500">CR<span className="text-white">H2H</span></h1>
+          <div className="flex items-center gap-3">
+            <button onClick={handleSync} disabled={syncing} className="p-2 hover:bg-slate-800 rounded-lg transition-colors">
+              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
             </button>
-            <button
-              onClick={onLogout}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded-md hover:bg-red-200"
-            >
-              Logout
+            <button onClick={onLogout} className="p-2 hover:bg-red-900/20 text-red-500 rounded-lg transition-colors">
+              <LogOut className="w-5 h-5" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        {/* Stats Row (Optional - placeholders for now) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatCard title="Total Tracked" value={matches.length} />
-          <StatCard title="Recent Win Rate" value={matches.length > 0 ? "Calculating..." : "N/A"} />
-          <StatCard title="Last Updated" value={new Date().toLocaleTimeString()} />
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-md border border-red-200">
-            {error}
-          </div>
-        )}
-
-        {/* Match Table */}
-        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-          <div className="px-4 py-5 border-b border-gray-200 sm:px-6">
-            <h3 className="text-lg leading-6 font-medium text-gray-900">Recent Matches</h3>
-          </div>
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading matches...</div>
-          ) : matches.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              No matches found. Click <b>"Sync Battles"</b> to fetch data from Clash Royale.
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <StatCard matches={matches} playerTag={user.player_tag} />
+            <div className="bg-slate-800 rounded-2xl border border-slate-700 overflow-hidden">
+              <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+                <h2 className="text-lg font-bold">Recent Battles</h2>
+              </div>
+              <div className="p-6">
+                {loading ? <p className="text-center text-slate-500">Loading...</p> : <MatchTable matches={matches} playerTag={user.player_tag} />}
+              </div>
             </div>
-          ) : (
-            // Passing the raw match data to your existing table component
-            <MatchTable matches={matches} userTag={user.player_tag} />
-          )}
+          </div>
+
+          <div className="space-y-6">
+            <button onClick={() => setIsSearchOpen(true)} className="w-full py-4 bg-blue-600 hover:bg-blue-700 rounded-xl font-bold flex items-center justify-center gap-2 transition-all transform active:scale-95 shadow-lg shadow-blue-900/20">
+              <UserPlus className="w-5 h-5" /> Find Rivals
+            </button>
+            <Leaderboard matches={matches} friends={friends} playerTag={user.player_tag} />
+          </div>
         </div>
       </main>
+
+      <FriendSearchModal 
+        isOpen={isSearchOpen} 
+        onClose={() => setIsSearchOpen(false)} 
+        currentUser={user} 
+        onFriendAdded={fetchData} 
+      />
     </div>
   );
 };

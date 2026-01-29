@@ -12,7 +12,6 @@ const client = axios.create({
 export const api = {
   // Register or fetch existing user
   registerUser: async (username, playerTag) => {
-    // Ensure tag has '#' prefix
     const formattedTag = playerTag.startsWith('#') ? playerTag : `#${playerTag}`;
     const response = await client.post('/users/', { 
       username, 
@@ -21,12 +20,8 @@ export const api = {
     return response.data;
   },
 
-  // Trigger backend sync with Supercell
+  // Trigger backend sync
   syncBattles: async (playerTag) => {
-    // Backend expects tag encoded or raw, safe to pass encoded if needed, 
-    // but usually axios handles URL parameters well. 
-    // We'll strip the hash for the URL path parameter if the backend requires it,
-    // but your backend test script suggests it handles standard tags.
     const cleanTag = playerTag.replace('#', '%23');
     const response = await client.post(`/sync/${cleanTag}`);
     return response.data;
@@ -36,6 +31,28 @@ export const api = {
   getMatches: async (playerTag) => {
     const cleanTag = playerTag.replace('#', '%23');
     const response = await client.get(`/players/${cleanTag}/matches`);
+    return response.data;
+  },
+
+  // Find a user in our local DB by tag
+  searchUser: async (playerTag) => {
+    const cleanTag = playerTag.replace('#', '%23');
+    const response = await client.get(`/search/${cleanTag}`); 
+    return response.data;
+  },
+
+  // Create friendship link
+  addFriend: async (currentUserId, friendId) => {
+    const response = await client.post('/friends/', { 
+      user_id_1: currentUserId, 
+      user_id_2: friendId 
+    });
+    return response.data;
+  },
+
+  // Fetch all friends for the leaderboard
+  getFriends: async (userId) => {
+    const response = await client.get(`/users/${userId}/friends`);
     return response.data;
   }
 };
