@@ -1,44 +1,111 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, Share2, Check, AlertCircle, X } from 'lucide-react';
+import { Search, UserPlus, Share2, Check, X, Loader2 } from 'lucide-react';
 import { api } from '../api/clash';
 
 const FriendSearchModal = ({ isOpen, onClose, currentUser, onFriendAdded }) => {
+  const [searchTag, setSearchTag] = useState('');
+  const [searchResult, setSearchResult] = useState(null);
+  const [status, setStatus] = useState('idle'); // idle, searching, found, error
+  const [feedback, setFeedback] = useState('');
+
   if (!isOpen) return null;
 
-  return (
-    // Ensure 'fixed' and high 'z-50' are present
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none">
-      {/* Semi-transparent Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm" 
-        onClick={onClose}
-      ></div>
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchTag) return;
 
-      {/* Modal Box */}
-      <div className="relative w-auto my-6 mx-auto max-w-lg w-full p-4">
-        <div className="relative flex flex-col w-full bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl outline-none focus:outline-none">
-          {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b border-slate-700 rounded-t">
-            <h3 className="text-xl font-bold text-white">Find Rivals</h3>
-            <button onClick={onClose} className="text-slate-400 hover:text-white">
-              <X className="w-6 h-6" />
+    setStatus('searching');
+    setSearchResult(null);
+    setFeedback('');
+
+    try {
+      let tag = searchTag.toUpperCase().trim();
+      if (!tag.startsWith('#')) tag = '#' + tag;
+
+      if (tag === currentUser.player_tag) {
+        setStatus('error');
+        setFeedback("That's you! You can't add yourself.");
+        return;
+      }
+
+      const user = await api.searchUser(tag);
+      setSearchResult(user);
+      setStatus('found');
+    } catch (err) {
+      setStatus('error');
+      setFeedback(err.response?.data?.detail || 'Player not found.');
+    }
+  };
+
+  const handleAddFriend = async () => {
+    try {
+      // CRITICAL: Pass numeric IDs, not tags
+      await api.addFriend(currentUser.id, searchResult.id);
+      onFriendAdded(); // Refresh the dashboard/leaderboard
+      onClose();       // Close modal on success
+    } catch (err) {
+      setFeedback('Failed to add friend or already added.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={onClose} />
+      
+      {/* Modal Container */}
+      <div className="relative w-full max-w-md bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div className="p-6 border-b border-slate-700 flex justify-between items-center">
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <UserPlus className="w-5 h-5 text-blue-500" /> Find Rivals
+          </h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          <form onSubmit={handleSearch} className="relative mb-6">
+            <input
+              type="text"
+              placeholder="Player Tag (e.g. #P990V0)"
+              value={searchTag}
+              onChange={(e) => setSearchTag(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 px-4 font-mono uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 rounded-lg">
+              <Search className="w-4 h-4 text-white" />
             </button>
-          </div>
-          
-          {/* Body */}
-          <div className="relative p-6 flex-auto">
-             <FriendSearchContent 
-                currentUser={currentUser} 
-                onSuccess={() => {
-                    onFriendAdded();
-                    onClose();
-                }} 
-             />
-          </div>
+          </form>
+
+          {status === 'searching' && (
+            <div className="flex justify-center py-4"><Loader2 className="w-6 h-6 animate-spin text-blue-500" /></div>
+          )}
+
+          {status === 'error' && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-sm text-center mb-4">
+              {feedback}
+            </div>
+          )}
+
+          {status === 'found' && searchResult && (
+            <div className="bg-slate-700/50 border border-slate-600 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <div className="font-bold">{searchResult.username}</div>
+                <div className="text-xs text-slate-400 font-mono">{searchResult.player_tag}</div>
+              </div>
+              <button
+                onClick={handleAddFriend}
+                className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-bold text-sm"
+              >
+                Add Friend
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default FriendSearch;
+export default FriendSearchModal;
