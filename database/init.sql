@@ -32,9 +32,20 @@ CREATE TABLE IF NOT EXISTS matches (
     crowns_2 INTEGER DEFAULT 0
 );
 
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_player_tags ON matches(player_1_tag, player_2_tag);
-CREATE INDEX IF NOT EXISTS idx_users_tag ON users(player_tag);
+-- 4. Performance Indexes (Optimized)
+-- Composite index for match lookup when searching by P1
+CREATE INDEX IF NOT EXISTS idx_matches_player_1 ON matches(player_1_tag, player_2_tag);
+
+-- Index for match lookup when searching by P2 (Critical for "all my matches")
+CREATE INDEX IF NOT EXISTS idx_matches_player_2 ON matches(player_2_tag);
+
+-- Index for sorting matches by time (Critical for "Recent Matches" feeds)
+CREATE INDEX IF NOT EXISTS idx_matches_time ON matches(battle_time DESC);
+
+-- Index for reverse friendship lookups (Who added me?)
+CREATE INDEX IF NOT EXISTS idx_friendships_user_2 ON friendships(user_id_2);
+
+-- Note: 'users.player_tag' is already unique, so an explicit index is not needed.
 
 -- Initial Mock Data (Optional)
 -- INSERT INTO users (username, player_tag) VALUES ('PlayerOne', '#P990V0');
