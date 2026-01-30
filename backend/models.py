@@ -7,17 +7,18 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), nullable=False)
+    username = Column(String(50), nullable=True) 
     player_tag = Column(String(15), unique=True, nullable=True, index=True)
     
-    # Auth Fields (These were missing, causing your error)
-    email = Column(String(255), unique=True, index=True, nullable=True)
-    hashed_password = Column(String(255), nullable=True)
-    is_verified = Column(Boolean, default=False, nullable=False)
+    # New Profile Fields
+    trophies = Column(Integer, default=0)
+    clan_name = Column(String(50), nullable=True)
+
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    hashed_password = Column(String(255), nullable=False)
     
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
 
-    # Relationships
     invites_created = relationship("Invite", back_populates="creator")
 
 class Invite(Base):
@@ -26,6 +27,9 @@ class Invite(Base):
     id = Column(Integer, primary_key=True, index=True)
     token = Column(String(64), unique=True, nullable=False, index=True)
     creator_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    
+    target_tag = Column(String(15), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     max_uses = Column(Integer, default=1)

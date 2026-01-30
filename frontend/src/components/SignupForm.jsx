@@ -18,26 +18,41 @@ const SignupForm = ({ onSignupSuccess, onSwitchToLogin }) => {
     setError('');
 
     // Basic Validation
-    if (!formData.player_tag.startsWith('#')) {
-      // Auto-fix tag if user forgets '#'
-      formData.player_tag = '#' + formData.player_tag;
+    let formattedTag = formData.player_tag.toUpperCase();
+    if (!formattedTag.startsWith('#')) {
+      formattedTag = '#' + formattedTag;
     }
 
     try {
-      // 1. Register
-      await api.signup(formData);
+      // 1. Register Identity (Username/Pass/Invite)
+      // Note: We don't send player_tag here because the auth endpoint doesn't handle CR API verification
+      await api.signup({
+        username: formData.username,
+        password: formData.password,
+        invite_token: formData.invite_token
+      });
       
-      // 2. Auto-Login on success (UX best practice)
+      // 2. Auto-Login to get JWT
       const loginData = await api.login(formData.username, formData.password);
       localStorage.setItem('clash_user', JSON.stringify(loginData));
       
+      // 3. CRITICAL FIX: Link the Player Tag now that we are logged in
+      try {
+         await api.linkPlayerTag(formattedTag);
+      } catch (tagErr) {
+         console.warn("Tag linking failed during signup:", tagErr);
+         // We don't block entry, but the user will need to link it later
+      }
+      
+      // 4. Fetch full profile and enter app
       const user = await api.getMe();
       onSignupSuccess({ ...user, ...loginData });
+
     } catch (err) {
       if (err.response && err.response.data && err.response.data.detail) {
         setError(err.response.data.detail);
       } else {
-        setError('Registration failed. Username or Tag might be taken.');
+        setError('Registration failed. Username might be taken.');
       }
     } finally {
       setLoading(false);
@@ -88,7 +103,7 @@ const SignupForm = ({ onSignupSuccess, onSwitchToLogin }) => {
                 placeholder="#P990V0"
                 className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-10 pr-4 py-3 text-white focus:ring-2 focus:ring-green-500 outline-none transition-all uppercase placeholder-slate-600"
                 value={formData.player_tag}
-                onChange={(e) => setFormData({...formData, player_tag: e.target.value.toUpperCase()})}
+                onChange={(e) => setFormData({...formData, player_tag: e.target.value})}
               />
               <Hash className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             </div>

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.50:8000';
 
 const client = axios.create({
   baseURL: API_URL,
@@ -9,79 +9,85 @@ const client = axios.create({
   },
 });
 
-// 1. Add Interceptor to inject JWT Token
-client.interceptors.request.use(
-  (config) => {
-    const user = localStorage.getItem('clash_user');
-    if (user) {
-      const { access_token } = JSON.parse(user);
-      if (access_token) {
-        config.headers.Authorization = `Bearer ${access_token}`;
-      }
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+const getAuthHeader = (token) => ({ Authorization: `Bearer ${token}` });
 
 export const api = {
-  // --- Auth & User ---
-  
-  // POST /auth/login
-  login: async (username, password) => {
-    // Login returns { access_token, token_type }
-    const response = await client.post('/auth/login', 
-      new URLSearchParams({ username, password }), // OAuth2 expects form data
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
-    return response.data;
-  },
-
-  // POST /auth/signup
+  // userData: { email, password, invite_token, player_tag }
   signup: async (userData) => {
     const response = await client.post('/auth/signup', userData);
     return response.data;
   },
 
-  // GET /users/me
-  getMe: async () => {
-    const response = await client.get('/users/me');
+  login: async (email, password) => {
+    // Backend expects 'username' field in FormData to carry the email
+    const formData = new FormData();
+    formData.append('username', email);
+    formData.append('password', password);
+    
+    const response = await client.post('/auth/login', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   },
 
-  // PUT /users/link-tag (Protected)
-  linkPlayerTag: async (playerTag) => {
-    const response = await client.put('/users/link-tag', { player_tag: playerTag });
+  getMe: async (token) => {
+    const response = await client.get('/users/me', { headers: getAuthHeader(token) });
     return response.data;
   },
 
-  // --- Core Features ---
-
-  // GET /matches (Protected - Gets matches for logged-in user)
-  getMatches: async () => {
-    const response = await client.get('/matches');
+  linkTag: async (playerTag, token) => {
+    const response = await client.put('/users/link-tag', 
+      { player_tag: playerTag },
+      { headers: getAuthHeader(token) }
+    );
     return response.data;
   },
 
-  // POST /friends/add (Protected)
-  addFriend: async (playerTag) => {
-    const response = await client.post('/friends/add', { player_tag: playerTag });
-    return response.data;
-  },
-  
-  // POST /invites/ (Generate a viral invite link)
-  createInvite: async () => {
-    const response = await client.post('/invites/');
+  // Invite Logic
+  getInvite: async (token) => {
+    const response = await client.get(`/invites/${token}`);
     return response.data;
   },
 
-  // Helper: Find user by tag (for friend search UI)
-  // Note: This assumes you kept a public search or use addFriend directly
-  searchUser: async (playerTag) => {
-    // We can try to add them directly to check existence, 
-    // or implement a specific search endpoint if needed.
-    // For now, we'll leave this as a placeholder or remove it 
-    // if the UI handles "Add Friend" blindly.
-    return { player_tag: playerTag }; 
+  createInvite: async (targetTag, token) => {
+    const response = await client.post('/invites/', 
+      { target_tag: targetTag }, 
+      { headers: getAuthHeader(token) }
+    );
+    return response.data;
+  },
+
+  // Unified Search
+  searchPlayer: async (query, token) => {
+    const response = await client.get(`/search/player?query=${encodeURIComponent(query)}`, {
+        headers: getAuthHeader(token)
+    });
+    return response.data;
+  },
+
+  addFriend: async (currentUserId, friendId, token) => {
+    const response = await client.post('/friends/add', 
+      { user_id_1: currentUserId, user_id_2: friendId },
+      { headers: getAuthHeader(token) }
+    );
+    return response.data;
+  },
+
+  getMatches: async (playerTag, token) => {
+    const response = await client.get(`/matches`, { headers: getAuthHeader(token) });
+    return response.data;
+  },
+
+  syncBattles: async (playerTag) => {
+    const cleanTag = playerTag.replace('#', '%23');
+    const response = await client.post(`/sync/${cleanTag}`);
+    return response.data;
+  },
+
+  getFriends: async (userId, token) => {
+    const response = await client.get(`/users/${userId}/friends`, {
+      headers: getAuthHeader(token)
+    });
+    return response.data;
   }
 };

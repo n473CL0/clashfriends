@@ -1,76 +1,87 @@
 import React, { useState, useEffect } from 'react';
-import LoginForm from './components/LoginForm';
-import SignupForm from './components/SignupForm';
+import UserForm from './components/UserForm'; 
+import LinkTagForm from './components/LinkTagForm';
 import Dashboard from './pages/Dashboard';
 import { api } from './api/clash';
+import { Loader2 } from 'lucide-react';
 
 function App() {
+  const [token, setToken] = useState(localStorage.getItem('clash_token'));
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('login'); // 'login', 'signup', 'dashboard'
-  const [loading,SF] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [inviteData, setInviteData] = useState(null);
 
-  // 1. Check for existing session on startup
   useEffect(() => {
-    const checkAuth = async () => {
-      const savedUser = localStorage.getItem('clash_user');
-      if (savedUser) {
+    const init = async () => {
+      // 1. Check for NEW Invite Link Format: /register?ref=#TAG
+      const params = new URLSearchParams(window.location.search);
+      const refTag = params.get('ref');
+      const isRegisterPath = window.location.pathname === '/register';
+
+      if (isRegisterPath && refTag) {
         try {
-          // Verify token is still valid by fetching latest user data
-          // (The interceptor in api/clash.js handles the token injection)
-          const latestUser = await api.getMe();
-          const tokenData = JSON.parse(savedUser);
-          
-          setUser({ ...latestUser, ...tokenData });
-          setView('dashboard');
+            // Encode the hash # properly for the API call
+            const safeTag = refTag.replace('#', '%23'); 
+            const data = await api.getInvite(safeTag);
+            
+            // data will contain { target_tag, creator_username, etc }
+            setInviteData(data);
+            
+            // Clean URL
+            window.history.replaceState({}, document.title, "/");
         } catch (err) {
-          // Token expired or invalid
-          console.log("Session expired");
-          localStorage.removeItem('clash_user');
+            console.error("Invalid invite ref", err);
+        }
+      }
+
+      // 2. Hydrate Session
+      const storedToken = localStorage.getItem('clash_token');
+      if (storedToken) {
+        try {
+          const userData = await api.getMe(storedToken);
+          setToken(storedToken);
+          setUser(userData);
+        } catch (err) {
+          handleLogout();
         }
       }
       setLoading(false);
     };
-    checkAuth();
+    init();
   }, []);
 
-  // 2. Handlers
-  const handleLogin = (userData) => {
+  const handleLoginSuccess = async (newToken) => {
+    localStorage.setItem('clash_token', newToken);
+    setToken(newToken);
+    const userData = await api.getMe(newToken);
     setUser(userData);
-    setView('dashboard');
+  };
+
+  const handleLinkSuccess = (updatedUser) => {
+    setUser(updatedUser);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('clash_user');
+    setToken(null);
     setUser(null);
-    setView('login');
+    localStorage.removeItem('clash_token');
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-500">
-        Loading...
-      </div>
-    );
+    return <div className="h-screen flex items-center justify-center bg-slate-900 text-blue-500"><Loader2 className="animate-spin w-8 h-8"/></div>;
   }
 
-  // 3. Render View Controller
-  return (
-    <div className="font-sans antialiased text-slate-100 bg-slate-900 min-h-screen">
-      {user ? (
-        <Dashboard user={user} onLogout={handleLogout} />
-      ) : view === 'signup' ? (
-        <SignupForm 
-          onSignupSuccess={handleLogin} 
-          onSwitchToLogin={() => setView('login')} 
-        />
-      ) : (
-        <LoginForm 
-          onLogin={handleLogin} 
-          onSwitchToSignup={() => setView('signup')} 
-        />
-      )}
-    </div>
-  );
+  // If user is not logged in, show UserForm (Sign In / Register)
+  // If we have inviteData, UserForm will default to "Register" mode
+  if (!token || !user) {
+    return <UserForm onLogin={handleLoginSuccess} inviteData={inviteData} />;
+  }
+
+  if (!user.player_tag) {
+    return <LinkTagForm token={token} onLink={handleLinkSuccess} onLogout={handleLogout} />;
+  }
+
+  return <Dashboard user={user} token={token} onLogout={handleLogout} />;
 }
 
 export default App;

@@ -7,19 +7,24 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
-    user_id: Optional[int] = None
-
 class UserSignup(BaseModel):
-    username: str
+    email: EmailStr
     password: str
-    email: Optional[EmailStr] = None
-    invite_token: Optional[str] = None  # Optional invite code
+    player_tag: Optional[str] = None 
+    invite_token: Optional[str] = None
 
 class UserLogin(BaseModel):
-    username: str
+    email: EmailStr
     password: str
+
+# --- Invite Schemas ---
+class InviteCreate(BaseModel):
+    target_tag: Optional[str] = None
+
+class InviteResponse(BaseModel):
+    token: str
+    target_tag: Optional[str] = None
+    creator_username: Optional[str] = None
 
 # --- User Operations ---
 class LinkTagRequest(BaseModel):
@@ -27,14 +32,19 @@ class LinkTagRequest(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
-    username: str
+    username: Optional[str] = None
     player_tag: Optional[str] = None
-    email: Optional[str] = None
+    email: EmailStr
+    
+    # New Fields
+    trophies: Optional[int] = 0
+    clan_name: Optional[str] = None
+    
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
 
-# --- Match Schemas (Unchanged) ---
+# --- Match Schemas ---
 class MatchResponse(BaseModel):
     battle_id: str
     player_1_tag: str

@@ -12,6 +12,7 @@ const LinkTagForm = ({ token, onLink, onLogout }) => {
     setLoading(true);
     setError('');
 
+    // Prepend # if user followed instructions and only typed numbers
     let formattedTag = tag.toUpperCase().trim();
     if (!formattedTag.startsWith('#')) {
       formattedTag = '#' + formattedTag;
@@ -21,7 +22,7 @@ const LinkTagForm = ({ token, onLink, onLogout }) => {
       const updatedUser = await api.linkTag(formattedTag, token);
       onLink(updatedUser);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Could not verify tag. Is it correct?');
+      setError(err.response?.data?.detail || 'Could not verify tag.');
     } finally {
       setLoading(false);
     }
@@ -38,14 +39,17 @@ const LinkTagForm = ({ token, onLink, onLogout }) => {
         <p className="text-slate-400 mb-8">Enter your Player Tag to start tracking.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            placeholder="#P990V0"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 px-4 text-center font-mono text-xl uppercase text-white focus:ring-2 focus:ring-blue-500 outline-none"
-            required
-          />
+          <div className="relative flex items-center">
+            <span className="absolute left-4 text-slate-500 font-mono text-xl select-none">#</span>
+            <input
+                type="text"
+                placeholder="P990V0" 
+                value={tag.replace('#', '')} // Visual cleanup if they paste a #
+                onChange={(e) => setTag(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 pl-8 pr-4 font-mono text-xl uppercase text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+            />
+          </div>
           
           {error && <div className="text-red-400 text-sm">{error}</div>}
 
