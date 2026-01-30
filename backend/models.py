@@ -10,7 +10,7 @@ class User(Base):
     username = Column(String(50), nullable=False)
     player_tag = Column(String(15), unique=True, nullable=True, index=True)
     
-    # Auth Fields
+    # Auth Fields (These were missing, causing your error)
     email = Column(String(255), unique=True, index=True, nullable=True)
     hashed_password = Column(String(255), nullable=True)
     is_verified = Column(Boolean, default=False, nullable=False)

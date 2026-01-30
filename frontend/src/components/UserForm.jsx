@@ -1,75 +1,137 @@
 import React, { useState } from 'react';
-// Ensure axios is installed or use fetch. 
-// If you don't have an API helper yet, we'll use inline fetch for now.
+import { api } from '../api/clash';
+import { User, Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 
 const UserForm = ({ onLogin }) => {
-  const [tag, setTag] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    email: ''
+  });
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    // format tag (ensure uppercase and starts with #)
-    let formattedTag = tag.toUpperCase();
-    if (!formattedTag.startsWith('#')) {
-      formattedTag = '#' + formattedTag;
-    }
-
     try {
-      // 1. Attempt to create/fetch user from Backend
-      const response = await fetch('http://localhost:8000/users/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          username: "Guest", // Default username for now
-          player_tag: formattedTag 
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to login. Check the tag or backend connection.');
+      if (isLogin) {
+        // LOGIN FLOW
+        const data = await api.login(formData.username, formData.password);
+        onLogin(data.access_token);
+      } else {
+        // SIGNUP FLOW
+        const inviteToken = sessionStorage.getItem('clash_invite');
+        await api.signup({
+          username: formData.username,
+          password: formData.password,
+          email: formData.email,
+          invite_token: inviteToken // Optional
+        });
+        
+        // Auto-login after signup
+        const loginData = await api.login(formData.username, formData.password);
+        sessionStorage.removeItem('clash_invite'); // Cleanup
+        onLogin(loginData.access_token);
       }
-
-      const userData = await response.json();
-      
-      // 2. Pass successful user data up to App.js
-      onLogin(userData);
     } catch (err) {
-      setError(err.message);
+      console.error(err);
+      setError(err.response?.data?.detail || 'Authentication failed. Please check your credentials.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <div className="p-8 bg-white rounded-lg shadow-md w-96">
-        <h1 className="mb-6 text-2xl font-bold text-center text-blue-600">CR Tracker</h1>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Player Tag</label>
-            <input
-            type="text"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            placeholder="#P990V0"
-            // ADD: text-gray-900 to ensure text is visible
-            className="w-full p-2 mt-1 text-gray-900 border rounded focus:ring-blue-500 focus:border-blue-500"
-            required
-            />
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 p-4">
+      <div className="w-full max-w-md bg-slate-800 rounded-2xl shadow-xl border border-slate-700 overflow-hidden">
+        
+        {/* Header */}
+        <div className="p-8 text-center border-b border-slate-700 bg-slate-800/50">
+          <h1 className="text-3xl font-black tracking-tight text-white mb-2">
+            CLASH<span className="text-blue-500">FRIENDS</span>
+          </h1>
+          <p className="text-slate-400 text-sm">
+            {isLogin ? 'Welcome back, challenger.' : 'Join the arena.'}
+          </p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-8 space-y-4">
+          <div className="space-y-4">
+            <div className="relative">
+              <User className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+              <input
+                name="username"
+                type="text"
+                placeholder="Username"
+                value={formData.username}
+                onChange={handleChange}
+                className="w-full bg-slate-900 border border-slate-600 rounded-xl py-2.5 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+              />
+            </div>
+
+            {!isLogin && (
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+                <input
+                  name="email"
+                  type="email"
+                  placeholder="Email (Optional)"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="w-full bg-slate-900 border border-slate-600 rounded-xl py-2.5 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            )}
+
+            <div className="relative">
+              <Lock className="absolute left-3 top-3 w-5 h-5 text-slate-500" />
+              <input
+                name="password"
+                type="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                className="w-full bg-slate-900 border border-slate-600 rounded-xl py-2.5 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+              />
+            </div>
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          {error && <div className="text-red-400 text-sm text-center bg-red-900/20 p-2 rounded-lg border border-red-900/50">{error}</div>}
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 text-white bg-blue-600 rounded hover:bg-blue-700 disabled:bg-blue-300"
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
           >
-            {loading ? 'Loading...' : 'Track My Stats'}
+            {loading ? <Loader2 className="animate-spin w-5 h-5"/> : (
+              <>
+                {isLogin ? 'Log In' : 'Create Account'} <ArrowRight className="w-5 h-5" />
+              </>
+            )}
           </button>
         </form>
+
+        {/* Footer */}
+        <div className="p-4 bg-slate-900/50 border-t border-slate-700 text-center">
+          <button 
+            onClick={() => { setIsLogin(!isLogin); setError(''); }}
+            className="text-slate-400 hover:text-white text-sm transition-colors"
+          >
+            {isLogin ? "Don't have an account? Sign up" : "Already have an account? Log in"}
+          </button>
+        </div>
       </div>
     </div>
   );
