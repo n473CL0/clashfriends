@@ -1,73 +1,53 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, UniqueConstraint, CheckConstraint, Index, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
 
 class User(Base):
     __tablename__ = "users"
-
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), nullable=True) 
-    player_tag = Column(String(15), unique=True, nullable=True, index=True)
-    
-    # New Profile Fields
+    username = Column(String(50), nullable=False)
+    player_tag = Column(String(15), unique=True, index=True) # Tag like #ABC1234
+    email = Column(String(255), unique=True, index=True)
+    hashed_password = Column(String(255))
+    is_verified = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     trophies = Column(Integer, default=0)
-    clan_name = Column(String(50), nullable=True)
+    clan_name = Column(String(100), nullable=True)
 
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    
-    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
-
-    invites_created = relationship("Invite", back_populates="creator")
+    invites = relationship("Invite", back_populates="creator")
 
 class Invite(Base):
     __tablename__ = "invites"
-
     id = Column(Integer, primary_key=True, index=True)
-    token = Column(String(64), unique=True, nullable=False, index=True)
-    creator_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    
-    target_tag = Column(String(15), nullable=True)
-    
-    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
-    expires_at = Column(DateTime(timezone=True), nullable=True)
+    token = Column(String(64), unique=True, index=True)
+    creator_id = Column(Integer, ForeignKey("users.id"))
+    target_tag = Column(String(15), nullable=True) # Optional: Invite specific player
     max_uses = Column(Integer, default=1)
     used_count = Column(Integer, default=0)
 
-    creator = relationship("User", back_populates="invites_created")
+    creator = relationship("User", back_populates="invites")
 
 class Friendship(Base):
     __tablename__ = "friendships"
-
     id = Column(Integer, primary_key=True, index=True)
-    user_id_1 = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    user_id_2 = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
-    created_at = Column(DateTime(timezone=True), default=datetime.datetime.utcnow)
-
-    __table_args__ = (
-        UniqueConstraint('user_id_1', 'user_id_2', name='unique_friendship'),
-        CheckConstraint('user_id_1 != user_id_2', name='no_self_friending'),
-        Index('idx_friendships_user_2', 'user_id_2'),
-    )
+    user_id_1 = Column(Integer, ForeignKey("users.id"))
+    user_id_2 = Column(Integer, ForeignKey("users.id"))
 
 class Match(Base):
     __tablename__ = "matches"
-
+    
     id = Column(Integer, primary_key=True, index=True)
-    battle_id = Column(String(50), unique=True, nullable=False)
+    battle_id = Column(String(50), unique=True, index=True)
     
-    player_1_tag = Column(String(15), ForeignKey("users.player_tag"), nullable=False)
-    player_2_tag = Column(String(15), ForeignKey("users.player_tag"), nullable=False)
+    # REFACTOR: Removed ForeignKey constraints here.
+    # We store the raw player tags so we can track matches against random opponents
+    # who are not registered in our 'users' table.
+    player_1_tag = Column(String(15), index=True)
+    player_2_tag = Column(String(15), index=True)
     
-    winner_tag = Column(String(15))
-    battle_time = Column(DateTime(timezone=True), nullable=False)
+    winner_tag = Column(String(15), nullable=True)
+    battle_time = Column(DateTime, nullable=False)
     game_mode = Column(String(50))
     crowns_1 = Column(Integer, default=0)
     crowns_2 = Column(Integer, default=0)
-
-    __table_args__ = (
-        Index('idx_matches_player_1', 'player_1_tag', 'player_2_tag'),
-        Index('idx_matches_player_2', 'player_2_tag'),
-        Index('idx_matches_time', 'battle_time'),
-    )
