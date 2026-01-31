@@ -49,3 +49,5 @@ def upsert_matches(db: Session, matches_data: list[dict]):
     
     db.execute(do_nothing_stmt)
     db.commit()
+
+    

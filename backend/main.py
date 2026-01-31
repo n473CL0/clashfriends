@@ -24,8 +24,7 @@ import database
 def get_env(key, default=None):
     val = os.getenv(key, default)
     if not val and default is None:
-        print(f"⚠️  Warning: {key} is missing in environment variables.")
-    return val
+        print(f"⚠️  Warning: {key} is missing in environment variables.")g
 
 SECRET_KEY = get_env("SECRET_KEY", "dev_unsafe_secret")
 CR_API_KEY = get_env("CR_API_KEY") 
@@ -414,3 +413,21 @@ def get_friends(uid: int, current: models.User = Depends(get_current_user), db: 
     fs = db.query(models.Friendship).filter(or_(models.Friendship.user_id_1 == uid, models.Friendship.user_id_2 == uid)).all()
     ids = [f.user_id_2 if f.user_id_1 == uid else f.user_id_1 for f in fs]
     return db.query(models.User).filter(models.User.id.in_(ids)).all()
+
+@app.post("/feedback", response_model=schemas.FeedbackResponse)
+def create_feedback(
+    feedback: schemas.FeedbackCreate, 
+    current: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    # Basic rate limiting could go here, skipping for beta
+    db_feedback = models.Feedback(
+        user_id=current.id,
+        feedback_type=feedback.feedback_type,
+        title=feedback.title,
+        description=feedback.description
+    )
+    db.add(db_feedback)
+    db.commit()
+    db.refresh(db_feedback)
+    return db_feedback

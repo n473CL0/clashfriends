@@ -59,11 +59,7 @@ const FriendSearchModal = ({ isOpen, onClose, currentUser, onFriendAdded }) => {
           
           const inviteData = await api.createInvite(targetTag, token);
           
-          let baseUrl = window.location.origin;
-          if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
-              baseUrl = baseUrl.replace('localhost', '192.168.0.50').replace('127.0.0.1', '192.168.0.50');
-          }
-          
+          const baseUrl = window.location.origin;
           const link = `${baseUrl}/register?ref=${inviteData.token}`;
           
           setInviteLink(link);

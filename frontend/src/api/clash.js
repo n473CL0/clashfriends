@@ -113,5 +113,12 @@ export const api = {
   resetPassword: async (token, newPassword) => {
       const response = await client.post('/auth/reset-password', { token, new_password: newPassword });
       return response.data;
-  }
+  },
+  
+  submitFeedback: async (data, token) => {
+    const response = await client.post('/feedback', data, {
+      headers: getAuthHeader(token)
+    });
+    return response.data;
+  },
 };

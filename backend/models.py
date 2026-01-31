@@ -1,6 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from database import Base
+from sqlalchemy.sql import func
 import datetime
 
 class User(Base):
@@ -51,3 +52,13 @@ class Match(Base):
     game_mode = Column(String(50))
     crowns_1 = Column(Integer, default=0)
     crowns_2 = Column(Integer, default=0)
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    feedback_type = Column(String(50), nullable=False) # 'bug', 'feature', 'other'
+    title = Column(String(100), nullable=False)
+    description = Column(String(1000), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

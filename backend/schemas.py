@@ -65,3 +65,16 @@ class MatchResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# --- Feedback ---
+class FeedbackCreate(BaseModel):
+    feedback_type: str
+    title: str
+    description: str
+
+class FeedbackResponse(FeedbackCreate):
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
