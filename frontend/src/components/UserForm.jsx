@@ -198,7 +198,7 @@ const UserForm = ({ onLogin, inviteData }) => {
                     onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); }}
                     className="text-slate-400 hover:text-white text-sm transition-colors"
                  >
-                    {mode === 'login' ? "I have an invite link" : "Back to Login"}
+                    {mode === 'login' ? "I don't have an invite link" : "Back to Login"}
                  </button>
             )}
         </div>
