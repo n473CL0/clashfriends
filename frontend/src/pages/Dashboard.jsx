@@ -4,6 +4,8 @@ import StatCard from '../components/StatCard';
 import Leaderboard from '../components/Leaderboard';
 import PlayerProfileCard from '../components/PlayerProfileCard';
 import FriendSearchModal from '../components/FriendSearchModal';
+import BetaBanner from '../components/BetaBanner';
+import FeedbackModal from '../components/FeedbackModal';
 import { api } from '../api/clash';
 
 const Dashboard = ({ user, token, onLogout }) => {
@@ -12,6 +14,7 @@ const Dashboard = ({ user, token, onLogout }) => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   // We need to refresh user data periodically or on sync to get updated trophies
   const [currentUser, setCurrentUser] = useState(user);
@@ -51,6 +54,7 @@ const Dashboard = ({ user, token, onLogout }) => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100">
+      <BetaBanner onOpenFeedback={() => setIsFeedbackOpen(true)} />
       <header className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 h-16 flex justify-between items-center">
           <h1 className="font-black text-xl tracking-tight text-white">
@@ -106,6 +110,11 @@ const Dashboard = ({ user, token, onLogout }) => {
           </div>
         </div>
       </main>
+
+      <FeedbackModal 
+        isOpen={isFeedbackOpen} 
+        onClose={() => setIsFeedbackOpen(false)} 
+      />
 
       <FriendSearchModal 
         isOpen={isSearchOpen} 
