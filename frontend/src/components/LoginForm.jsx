@@ -13,18 +13,16 @@ const LoginForm = ({ onLogin, onSwitchToSignup }) => {
     setError('');
 
     try {
+      // 1. Get the token
       const data = await api.login(formData.username, formData.password);
-      // Data contains { access_token, token_type }
-      // We also need to fetch the user details immediately to have the "Me" object
-      // Temporarily store token so the next request works
-      localStorage.setItem('clash_user', JSON.stringify(data));
       
-      const user = await api.getMe();
-      // Combine token and user data for the app state
-      onLogin({ ...user, ...data });
+      // 2. Pass ONLY the access_token string to App.js
+      // App.js will handle saving it and fetching the user profile ('getMe')
+      onLogin(data.access_token);
+      
     } catch (err) {
+      console.error(err);
       setError('Invalid username or password');
-      localStorage.removeItem('clash_user'); // Clean up if failed
     } finally {
       setLoading(false);
     }
